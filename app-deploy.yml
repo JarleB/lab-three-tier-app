@@ -1,0 +1,35 @@
+---
+- name: Gather facts
+  #gather_facts: false
+  hosts: jumpbox
+  become: true
+  roles:
+  - osp-facts
+
+- name: Common config
+  #gather_facts: false
+  hosts: all
+  become: true
+  roles:
+  - common
+
+- name: Frontend config
+  #gather_facts: false
+  hosts: frontends
+  become: true
+  roles:
+  - frontend
+
+- name: App config
+  #gather_facts: false
+  hosts: apps
+  become: true
+  roles:
+  - app
+
+- name: Database config
+  #gather_facts: false
+  hosts: appdbs
+  become: true
+  roles:
+  - db

@@ -1,0 +1,29 @@
+---
+- name: Ensure software packeges is installed with latest version
+  package:
+    name: "{{item}}"
+    state: latest
+  with_items:
+  - httpie
+  - haproxy
+
+
+# Facts must be gathered for ansible_hostname to exists
+- name: Compensate for lack of DNS registration when deploying to openstack
+  lineinfile:
+    path: /etc/hosts
+    line: "{{ item }} {{ hostvars[item]['ansible_hostname'] }}.{{GUID}}.internal"
+  with_items:
+    "{{ groups.apps }}"
+
+- name: HAproxy config
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+  notify: Restart HAproxy
+
+- name: Ensure service HAProxy is enabled and started
+  service:
+    name: haproxy
+    enabled: true
+    state: started

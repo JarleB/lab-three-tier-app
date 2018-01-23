@@ -1,0 +1,2 @@
+---
+pg_initdb_check: "/var/lib/pgsql/data/PG_VERSION"

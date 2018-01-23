@@ -1,0 +1,128 @@
+---
+- hosts: jumpbox
+  gather_facts: false
+  vars:
+    tomcat_port: 8080
+    ssh_port: 22
+    db_port: 5432
+    front_port: 80
+
+    tiers:
+     - app
+     - db
+     - frontend
+
+  tasks:
+  - name: Ensure app instances is absent
+    os_server:
+       cloud: ospcloud
+       state: absent
+       name: "{{item}}"
+       image: rhel-guest
+       key_name: ansible_ssh
+       timeout: 200
+       security_groups: app
+       flavor: m2.small
+       nics:
+         - net-name: pub_network
+         - net-name: priv_network
+       meta:
+         deployment_name: QA
+         group: apps
+    with_items:
+      - app1
+      - app2
+
+  - name: Ensure db instance is absent
+    os_server:
+       cloud: ospcloud
+       state: absent
+       name: "{{item}}"
+       image: rhel-guest
+       key_name: ansible_ssh
+       timeout: 200
+       security_groups: "{{item}}"
+       flavor: m2.small
+       nics:
+         - net-name: pub_network
+         - net-name: priv_network
+       meta:
+         deployment_name: QA
+         group: appdbs
+    with_items:
+      - db
+
+  - name: Ensure frontend instance is absent
+    os_server:
+       cloud: ospcloud
+       state: absent
+       name: "{{item}}"
+       image: rhel-guest
+       key_name: ansible_ssh
+       timeout: 200
+       security_groups: "{{item}}"
+       flavor: m2.small
+       nics:
+         - net-name: pub_network
+         - net-name: priv_network
+       meta:
+         deployment_name: QA
+         group: frontends
+    with_items:
+      - frontend
+
+  - name: Ensure security groups is in place
+    os_security_group:
+      cloud: ospcloud
+      state: absent
+      name: "{{item}}"
+      description: "security group for {{item}} servers"
+    with_items: "{{tiers}}"
+
+  - name: Ensure router is in place
+    os_router:
+      cloud: ospcloud
+      state: absent
+      name: router1
+
+
+  - os_subnet:
+      cloud: ospcloud
+      state: absent
+      network_name: pub_network
+      name: pub_subnet
+      cidr: 10.10.10.0/24
+      dns_nameservers:
+         - 8.8.8.7
+         - 8.8.8.8
+      host_routes:
+         - destination: 0.0.0.0/0
+           nexthop: 10.10.10.0
+         - destination: 192.168.0.0/24
+           nexthop: 192.168.0.0
+
+  - os_subnet:
+      cloud: ospcloud
+      state: absent
+      network_name: priv_network
+      name: priv_subnet
+      cidr: 20.20.20.0/24
+      host_routes:
+         - destination: 0.0.0.0/0
+           nexthop: 192.168.0.0
+         - destination: 192.168.0.0/24
+           nexthop: 192.168.0.0
+  - os_network:
+      cloud: ospcloud
+      state: absent
+      name: pub_network
+      external: true
+
+
+  - os_network:
+      cloud: ospcloud
+      state: absent
+      name: priv_network
+      external: false
+
+

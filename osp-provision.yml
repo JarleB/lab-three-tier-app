@@ -1,0 +1,240 @@
+---
+- hosts: jumpbox
+  gather_facts: false
+  vars:
+    tomcat_port: 8080
+    ssh_port: 22
+    db_port: 5432
+    front_port: 80
+
+    tiers:
+     - app
+     - db
+     - frontend
+
+  tasks:
+  - os_network:
+      cloud: ospcloud
+      state: present
+      name: pub_network
+      external: true
+
+  - os_subnet:
+      cloud: ospcloud
+      state: present
+      network_name: pub_network
+      name: pub_subnet
+      cidr: 10.10.10.0/24
+      dns_nameservers:
+         - 8.8.8.7
+         - 8.8.8.8
+      host_routes:
+         - destination: 0.0.0.0/0
+           nexthop: 10.10.10.0
+         - destination: 192.168.0.0/24
+           nexthop: 192.168.0.0
+
+  - os_network:
+      cloud: ospcloud
+      state: present
+      name: priv_network
+      external: false
+
+  - os_subnet:
+      cloud: ospcloud
+      state: present
+      network_name: priv_network
+      name: priv_subnet
+      cidr: 20.20.20.0/24
+      dns_nameservers:
+         - 8.8.8.7
+         - 8.8.8.8
+      host_routes:
+         - destination: 0.0.0.0/0
+           nexthop: 192.168.0.0
+         - destination: 192.168.0.0/24
+           nexthop: 192.168.0.0
+
+  - name: Ensure router is in place
+    os_router:
+      cloud: ospcloud
+      state: present
+      name: router1
+      network: pub_network
+      external_fixed_ips:
+        - subnet: pub_subnet
+      interfaces:
+        - priv_subnet
+
+  - name: Generate key files
+    user:
+      name: "cloud-user"
+      generate_ssh_key: yes
+      ssh_key_file: .ssh/test_id_rsa
+  - os_keypair:
+      cloud: ospcloud
+      state: present
+      name: ansible_ssh
+      public_key_file: "/home/cloud-user/.ssh/test_id_rsa.pub"
+
+  - name: "Create the custom flavor m2.small"
+    os_nova_flavor:
+      cloud: ospcloud
+      state: present
+      name: m2.small
+      ram: 2048
+      vcpus: 1
+      disk: 10
+
+  - name: Ensure security groups is in place
+    os_security_group:
+      cloud: ospcloud
+      state: present
+      name: "{{item}}"
+      description: "security group for {{item}} servers"
+    with_items: "{{tiers}}"
+
+  - name: Allow icmp in all security groups
+    os_security_group_rule:
+      cloud:  ospcloud
+      security_group: "{{item}}"
+      protocol: icmp
+      remote_ip_prefix: 0.0.0.0/0
+    with_items: "{{tiers}}"
+
+  - name: Allow ssh in all security groups
+    os_security_group_rule:
+      cloud:  ospcloud
+      security_group: "{{item}}"
+      protocol: tcp
+      port_range_min: "{{ssh_port}}"
+      port_range_max: "{{ssh_port}}"
+      remote_ip_prefix: 0.0.0.0/0
+    with_items: "{{tiers}}"
+
+  - name: Allow tomcat in app security group
+    os_security_group_rule:
+      cloud:  ospcloud
+      security_group: "{{item}}"
+      protocol: tcp
+      port_range_min: "{{tomcat_port}}"
+      port_range_max: "{{tomcat_port}}"
+      remote_ip_prefix: 0.0.0.0/0
+    with_items:
+       - app
+
+  - name: Allow db in db security group
+    os_security_group_rule:
+      cloud:  ospcloud
+      security_group: "{{item}}"
+      protocol: tcp
+      port_range_min: "{{db_port}}"
+      port_range_max: "{{db_port}}"
+      remote_ip_prefix: 0.0.0.0/0
+    with_items:
+       - db
+
+  - name: Allow frontend in frontend security group
+    os_security_group_rule:
+      cloud:  ospcloud
+      security_group: "{{item}}"
+      protocol: tcp
+      port_range_min: "{{front_port}}"
+      port_range_max: "{{front_port}}"
+      remote_ip_prefix: 0.0.0.0/0
+    with_items:
+       - frontend
+    tags:
+       - front
+
+  - name: Ensure app instances is present
+    os_server:
+       cloud: ospcloud
+       state: present
+       name: "{{item}}"
+       image: rhel-guest
+       key_name: ansible_ssh
+       timeout: 200
+       security_groups: app
+       flavor: m2.small
+       nics:
+         #- net-name: pub_network
+         - net-name: priv_network
+       meta:
+         deployment_name: QA
+         group: apps
+       userdata: |
+         #!/bin/bash
+         curl -o /tmp/openstack.pub http://www.opentlc.com/download/ansible_bootcamp/openstack_keys/openstack.pub
+         cat /tmp/openstack.pub >> /home/cloud-user/.ssh/authorized_keys
+         curl -o /tmp/internal.repo http://www.opentlc.com/download/ansible_bootcamp/repo/internal.repo
+         cp /tmp/internal.repo /etc/yum.repos.d/internal.repo
+    with_items:
+      - app1
+      - app2
+
+  - name: Ensure db instance is present
+    os_server:
+       cloud: ospcloud
+       state: present
+       name: "{{item}}"
+       image: rhel-guest
+       key_name: ansible_ssh
+       timeout: 200
+       security_groups: "{{item}}"
+       flavor: m2.small
+       nics:
+         #- net-name: pub_network
+         - net-name: priv_network
+       meta:
+         deployment_name: QA
+         group: appdbs
+       userdata: |
+         #!/bin/bash
+         curl -o /tmp/openstack.pub http://www.opentlc.com/download/ansible_bootcamp/openstack_keys/openstack.pub
+         cat /tmp/openstack.pub >> /home/cloud-user/.ssh/authorized_keys
+         curl -o /tmp/internal.repo http://www.opentlc.com/download/ansible_bootcamp/repo/internal.repo
+         cp /tmp/internal.repo /etc/yum.repos.d/internal.repo
+    with_items:
+      - db
+
+  - name: Ensure frontend instance is present
+    os_server:
+       cloud: ospcloud
+       state: present
+       name: "{{item}}"
+       image: rhel-guest
+       key_name: ansible_ssh
+       timeout: 200
+       security_groups: "{{item}}"
+       flavor: m2.small
+       nics:
+         #- net-name: pub_network
+         - net-name: priv_network
+       meta:
+         deployment_name: QA
+         group: frontends
+       userdata: |
+         #!/bin/bash
+         curl -o /tmp/openstack.pub http://www.opentlc.com/download/ansible_bootcamp/openstack_keys/openstack.pub
+         cat /tmp/openstack.pub >> /home/cloud-user/.ssh/authorized_keys
+         curl -o /tmp/internal.repo http://www.opentlc.com/download/ansible_bootcamp/repo/internal.repo
+         cp /tmp/internal.repo /etc/yum.repos.d/internal.repo
+    with_items:
+      - frontend
+
+  - name: Add floating IP to "{{ item }}"
+    os_floating_ip:
+      cloud: ospcloud
+      state: present
+      reuse: yes
+      server: "{{ item }}"
+      network: pub_network
+      wait: true
+      timeout: 180
+    register: instancefloatingip
+    with_items:
+      - app1
+      - app2
+      - db
+      - frontend

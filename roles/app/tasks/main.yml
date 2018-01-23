@@ -1,0 +1,29 @@
+---
+- name: Ensure software packages is installed with latest version
+  package:
+    name: "{{item}}"
+    state: latest
+  with_items:
+  - tomcat
+  - httpd
+
+- name: Ensure services is enabled and started
+  service:
+    name: "{{item}}"
+    enabled: yes
+    state: started
+  with_items:
+  - tomcat
+  - httpd
+
+- name: "Make sure tomcat root directory exists: {{tomcat_root}}"
+  file:
+    path: "{{tomcat_root}}"
+    state: directory
+
+- name: "Make sure tomcat index file is in place in directory {{tomcat_root}}"
+  template:
+    src: index.html.j2
+    dest: "{{tomcat_root}}/index.html"
+    mode: 0644
+

@@ -1,0 +1,20 @@
+---
+- name: Ensure postgresql package is installed with latest version
+  package:
+    name: postgresql-server
+    state: latest
+
+- name: "Check for existence of postgres data directory: {{pg_initdb_check}}"
+  stat:
+    path: "{{pg_initdb_check}}"
+  register: pg
+
+- name: Initilize postgres data directory
+  command: postgresql-setup initdb
+  when: pg.stat.exists == False
+
+- name: Ensure postgresql is enabled and started
+  service:
+    name: postgresql.service
+    enabled: true
+    state: started
