@@ -8,7 +8,7 @@
 
 - name: Common config
   #gather_facts: false
-  hosts: all
+  hosts: apps:frontend:appdbs
   become: true
   roles:
   - common
